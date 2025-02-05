@@ -36,6 +36,7 @@ def batch_generate_vllm(args):
         seed=args.seed,
         max_num_seqs=args.max_num_seqs,
         enable_prefix_caching=args.enable_prefix_caching,
+        download_dir=os.getenv("HF_HOME", None),
     )
 
     # Create a sampling params object.

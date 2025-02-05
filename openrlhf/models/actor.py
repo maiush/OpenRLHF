@@ -77,6 +77,7 @@ class Actor(nn.Module):
                 quantization_config=nf4_config,
                 torch_dtype=torch.bfloat16 if bf16 else "auto",
                 device_map=device_map,
+                cache_dir=os.getenv("HF_HOME", None),
             )
 
             # LoRA
