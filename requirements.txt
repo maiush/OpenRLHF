@@ -3,7 +3,6 @@ bitsandbytes
 datasets
 deepspeed==0.15.0
 einops
-flash-attn==2.7.0.post2
 isort
 jsonlines
 loralib
@@ -12,7 +11,6 @@ packaging
 peft
 ray[default]==2.12.0
 tensorboard
-torch
 torchmetrics
 tqdm
 transformers==4.46.3
