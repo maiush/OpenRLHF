@@ -84,27 +84,13 @@ class DPOTrainer(ABC):
             if not wandb.api.api_key:
                 wandb.login(key=strategy.args.use_wandb)
             
-            # Check if a run with the same name already exists
-            resume = False
-            try:
-                api = wandb.Api()
-                existing_runs = api.runs(f"{strategy.args.wandb_org}/{strategy.args.wandb_project}")
-                for run in existing_runs:
-                    if run.name == strategy.args.wandb_run_name and run.group == strategy.args.wandb_group:
-                        resume = "must"
-                        break
-            except Exception as e:
-                print(f"Warning: Failed to check for existing wandb runs: {e}")
-                resume = False
-            
             wandb.init(
                 entity=strategy.args.wandb_org,
                 project=strategy.args.wandb_project,
                 group=strategy.args.wandb_group,
                 name=strategy.args.wandb_run_name,
                 config=strategy.args.__dict__,
-                reinit=True,
-                resume=resume
+                reinit=True
             )
 
             wandb.define_metric("train/global_step")
