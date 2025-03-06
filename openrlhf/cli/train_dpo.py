@@ -29,6 +29,7 @@ def train(args):
         target_modules=args.target_modules,
         ds_config=strategy.get_ds_train_config(is_actor=True),
         packing_samples=args.packing_samples,
+        load_lora_adapter=args.load_lora_adapter,
     )
 
     # configure tokenizer
@@ -43,6 +44,7 @@ def train(args):
         load_in_4bit=args.load_in_4bit,
         ds_config=strategy.get_ds_eval_config(offload=args.ref_offload),
         packing_samples=args.packing_samples,
+        load_lora_adapter=args.ref_load_lora_adapter,
     )
     if args.ref_offload:
         ref_model._offload = True
@@ -253,10 +255,17 @@ if __name__ == "__main__":
     # TensorBoard parameters
     parser.add_argument("--use_tensorboard", type=str, default=None, help="TensorBoard logging path")
 
+    # load existing LoRA adapters
+    parser.add_argument("--load_lora_adapter", type=str, default=None, help="Path to pretrained LoRA adapter to load")
+    parser.add_argument("--ref_load_lora_adapter", type=str, default=None, help="Path to pretrained LoRA adapter for reference model")
+
     args = parser.parse_args()
 
     if args.ref_pretrain is None or args.ref_pretrain == "":
         args.ref_pretrain = args.pretrain
+
+    if args.ref_load_lora_adapter is None or args.ref_load_lora_adapter == ""   :
+        args.ref_load_lora_adapter = args.load_lora_adapter
 
     if args.input_template and "{}" not in args.input_template:
         print("[Warning] {} not in args.input_template, set to None")

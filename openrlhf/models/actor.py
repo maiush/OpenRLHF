@@ -30,6 +30,7 @@ class Actor(nn.Module):
         ds_config (dict, optional): Configuration for DeepSpeed, enabling model partitioning across multiple GPUs. Defaults to None.
         device_map (dict, optional): Device mapping for loading the model onto specific devices. Defaults to None.
         packing_samples (bool, optional): Whether to pack samples during training. Defaults to False.
+        load_lora_adapter (str, optional): Path to pretrained LoRA adapter to load. Defaults to None.
     """
 
     def __init__(
@@ -45,6 +46,7 @@ class Actor(nn.Module):
         ds_config=None,
         device_map=None,
         packing_samples=False,
+        load_lora_adapter=None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -84,16 +86,48 @@ class Actor(nn.Module):
             if lora_rank > 0:
                 # https://github.com/huggingface/peft/issues/137
                 self.model.enable_input_require_grads()
-                lora_config = LoraConfig(
-                    task_type=TaskType.CAUSAL_LM,
-                    r=lora_rank,
-                    lora_alpha=lora_alpha,
-                    target_modules=target_modules,
-                    lora_dropout=lora_dropout,
-                    bias="none",
-                )
-                self.model = get_peft_model(self.model, lora_config)
+                
+                # Check if we're loading a pre-trained LoRA adapter
+                if load_lora_adapter:
+                    print(f"Loading pre-trained LoRA adapter from {load_lora_adapter}")
+                    from peft import PeftModel
+                    self.model = PeftModel.from_pretrained(
+                        self.model,
+                        load_lora_adapter,
+                        is_trainable=True,
+                    )
+                else:
+                    # Initialize a new LoRA adapter
+                    lora_config = LoraConfig(
+                        task_type=TaskType.CAUSAL_LM,
+                        r=lora_rank,
+                        lora_alpha=lora_alpha,
+                        target_modules=target_modules,
+                        lora_dropout=lora_dropout,
+                        bias="none",
+                    )
+                    self.model = get_peft_model(self.model, lora_config)
 
+                if load_in_4bit:
+                    for name, module in self.model.named_modules():
+                        if isinstance(module, LoraLayer):
+                            module = module.to(torch.bfloat16)
+                        if "norm" in name:
+                            module = module.to(torch.float32)
+                        if "lm_head" in name or "embed_tokens" in name:
+                            if hasattr(module, "weight"):
+                                module = module.to(torch.bfloat16)
+            
+            # If we're loading a pre-trained LoRA adapter without specifying lora_rank
+            elif load_lora_adapter:
+                print(f"Loading pre-trained LoRA adapter from {load_lora_adapter}")
+                from peft import PeftModel
+                self.model = PeftModel.from_pretrained(
+                    self.model,
+                    load_lora_adapter,
+                    is_trainable=True,
+                )
+                
                 if load_in_4bit:
                     for name, module in self.model.named_modules():
                         if isinstance(module, LoraLayer):
