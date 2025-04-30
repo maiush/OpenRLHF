@@ -120,8 +120,13 @@ class SFTDataset(Dataset):
 
         if not self.pretrain_mode:
             text = (prompt + response).rstrip("\n")
-            if not text.endswith(self.tokenizer.eos_token):
-                text += " " + self.tokenizer.eos_token
+            # temporary fix for mistral-3.1-24b-it
+            try:
+                if not text.endswith(self.tokenizer.eos_token):
+                    text += " " + self.tokenizer.eos_token
+            except:
+                if not text.endswith(self.tokenizer.tokenizer.eos_token):
+                    text += " " + self.tokenizer.tokenizer.eos_token
         else:
             text = prompt
 
@@ -136,7 +141,10 @@ class SFTDataset(Dataset):
 
         if not self.pretrain_mode:
             # to avoid EOS_token truncation
-            input_token["input_ids"][0][-1] = self.tokenizer.eos_token_id
+            try:
+                input_token["input_ids"][0][-1] = self.tokenizer.eos_token_id
+            except:
+                input_token["input_ids"][0][-1] = self.tokenizer.tokenizer.eos_token_id
             input_token["attention_mask"][0][-1] = True
         info = {"input": prompt, "output": response, "input_length": input_token["attention_mask"].int().sum().item()}
 
@@ -155,7 +163,10 @@ class SFTDataset(Dataset):
             infos["input"].append(info["input"])
             infos["output"].append(info["output"])
 
-        input_ids = zero_pad_sequences(input_ids, "right", self.tokenizer.pad_token_id)
+        try:
+            input_ids = zero_pad_sequences(input_ids, "right", self.tokenizer.pad_token_id)
+        except:
+            input_ids = zero_pad_sequences(input_ids, "right", self.tokenizer.tokenizer.pad_token_id)
         attention_masks = zero_pad_sequences(attention_masks, "right")
         return prompt_ids_lens, input_ids, attention_masks, infos
 
@@ -180,7 +191,10 @@ class SFTDataset(Dataset):
             self.multiple_of > 1 and packed_input_ids.numel() % self.multiple_of != 0
         ):  # not divisible by multiple_of; here we align for grouping
             padding_len = self.multiple_of - (packed_input_ids.numel() % self.multiple_of)
-            packed_input_ids = F.pad(packed_input_ids, (0, padding_len), value=self.tokenizer.pad_token_id)
+            try:
+                packed_input_ids = F.pad(packed_input_ids, (0, padding_len), value=self.tokenizer.pad_token_id)
+            except:
+                packed_input_ids = F.pad(packed_input_ids, (0, padding_len), value=self.tokenizer.tokenizer.pad_token_id)
             packed_attention_masks = F.pad(packed_attention_masks, (0, padding_len), value=0)
 
         return prompt_ids_lens, packed_input_ids, packed_attention_masks, infos
