@@ -9,8 +9,6 @@ loralib
 optimum
 packaging
 peft
-ray[default]
-tensorboard
 torchmetrics
 tqdm
 transformers
