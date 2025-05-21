@@ -234,7 +234,7 @@ class DPOLoss(nn.Module):
         policy_chosen_logps: torch.Tensor,
         policy_rejected_logps: torch.Tensor,
         reference_chosen_logps: torch.Tensor,
-        reference_rejected_logps: torch.Tensor,
+        reference_rejected_logps: torch.Tensor, 
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         pi_logratios = policy_chosen_logps - policy_rejected_logps
         ref_logratios = reference_chosen_logps - reference_rejected_logps

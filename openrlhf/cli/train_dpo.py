@@ -153,6 +153,7 @@ def train(args):
         max_epochs=args.max_epochs,
         save_hf_ckpt=args.save_hf_ckpt,
         disable_ds_ckpt=args.disable_ds_ckpt,
+        length_normalize=args.length_normalize,
     )
 
     trainer.fit(args, consumed_samples, num_update_steps_per_epoch)
@@ -195,6 +196,7 @@ if __name__ == "__main__":
     parser.add_argument("--bf16", action="store_true", default=False, help="Enable bfloat16")
     parser.add_argument("--ref_offload", action="store_true", default=False)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
+    parser.add_argument("--scheduler", type=str, default="cosine_with_min_lr")
     parser.add_argument("--lr_warmup_ratio", type=float, default=0.03)
     parser.add_argument("--lr_scheduler", type=str, default="cosine_with_min_lr")
     parser.add_argument("--zpg", type=int, default=1, help="ZeRO++ max partition size")
@@ -227,7 +229,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nll_loss_coef", type=float, default=0, help="Regularization with NLL loss, see LLama 3.1 tech report."
     )
+    parser.add_argument("--kl_loss_coef", type=float, default=0, help="Regularization with KL loss")
     parser.add_argument("--adam_betas", type=float, nargs=2, default=(0.9, 0.95), help="Betas for Adam optimizer")
+    parser.add_argument("--length_normalize", action="store_true", default=False)
 
     # Context Parallel
     parser.add_argument("--ring_attn_size", type=int, default=1, help="Ring attention group size")

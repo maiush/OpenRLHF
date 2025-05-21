@@ -44,6 +44,7 @@ class DPOTrainer(ABC):
         max_epochs: int = 2,
         save_hf_ckpt: bool = False,
         disable_ds_ckpt: bool = False,
+        length_normalize: bool = False,
     ) -> None:
         super().__init__()
         self.strategy = strategy
@@ -59,7 +60,7 @@ class DPOTrainer(ABC):
         self.args = strategy.args
         self.save_hf_ckpt = save_hf_ckpt
         self.disable_ds_ckpt = disable_ds_ckpt
-
+        self.length_normalize = length_normalize
         self.beta = beta
         self.loss_fn = DPOLoss(self.beta, self.args.label_smoothing, self.args.ipo)
 
@@ -68,6 +69,9 @@ class DPOTrainer(ABC):
 
         # NLL loss
         self.nll_loss = self.args.nll_loss_coef > 1e-8
+
+        # KL loss
+        self.kl_loss = self.args.kl_loss_coef > 1e-8
 
         # packing samples
         self.packing_samples = strategy.args.packing_samples
@@ -144,11 +148,11 @@ class DPOTrainer(ABC):
                 reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
                 r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
 
-                chosen_logps, rejected_logps, aux_loss, nll_loss = self.concatenated_forward(
+                chosen_logps, rejected_logps, aux_loss, nll_loss, log_probs, att_masks = self.concatenated_forward(
                     self.model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                 )
                 with torch.no_grad():
-                    reference_chosen_logps, reference_rejected_logps, _, _ = self.concatenated_forward(
+                    reference_chosen_logps, reference_rejected_logps, _, _, reference_log_probs, _ = self.concatenated_forward(
                         self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                     )
 
@@ -162,8 +166,16 @@ class DPOTrainer(ABC):
                 # nll loss
                 if not self.nll_loss:
                     nll_loss = 0
+                # kl loss
+                if not self.kl_loss:
+                    kl_loss = 0
+                else:
+                    kl_vals = self._get_batch_kl(
+                        log_probs, reference_log_probs, att_masks, prompt_id_lens + prompt_id_lens
+                    )
+                    kl_loss = kl_vals.mean()    
 
-                loss = preference_loss + aux_loss * self.args.aux_loss_coef + nll_loss * self.args.nll_loss_coef
+                loss = preference_loss + aux_loss * self.args.aux_loss_coef + nll_loss * self.args.nll_loss_coef + kl_loss * self.args.kl_loss_coef
                 self.strategy.backward(loss, self.model, self.optimizer)
                 self.strategy.optimizer_step(self.optimizer, self.model, self.scheduler)
 
@@ -180,6 +192,8 @@ class DPOTrainer(ABC):
                 }
                 if self.nll_loss:
                     logs_dict["nll_loss"] = nll_loss.item()
+                if self.kl_loss:
+                    logs_dict["sq_approx_kl"] = kl_loss.item()
                 # step bar
                 logs_dict = self.strategy.all_reduce(logs_dict)
                 step_bar.set_postfix(logs_dict)
@@ -252,11 +266,11 @@ class DPOTrainer(ABC):
                 reject_ids = reject_ids.squeeze(1).to(torch.cuda.current_device())
                 r_mask = r_mask.squeeze(1).to(torch.cuda.current_device())
 
-                chosen_logps, rejected_logps, aux_loss, _ = self.concatenated_forward(
+                chosen_logps, rejected_logps, aux_loss, _, _, _ = self.concatenated_forward(
                     self.model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                 )
                 with torch.no_grad():
-                    reference_chosen_logps, reference_rejected_logps, _, _ = self.concatenated_forward(
+                    reference_chosen_logps, reference_rejected_logps, _, _, _, _ = self.concatenated_forward(
                         self.ref_model, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens
                     )
 
@@ -304,10 +318,10 @@ class DPOTrainer(ABC):
         all_logps_sum, all_logps_mean = self._get_batch_logps(
             log_probs, att_masks, prompt_id_lens, average_log_prob=False
         )
-        chosen_logps = all_logps_sum[: chosen_ids.shape[0]]
-        rejected_logps = all_logps_sum[chosen_ids.shape[0] :]
+        chosen_logps = all_logps_mean[: chosen_ids.shape[0]] if self.length_normalize else all_logps_sum[: chosen_ids.shape[0]]
+        rejected_logps = all_logps_mean[chosen_ids.shape[0] :] if self.length_normalize else all_logps_sum[chosen_ids.shape[0] :]
         aux_loss = output.aux_loss if "aux_loss" in output else []
-        return chosen_logps, rejected_logps, aux_loss, -all_logps_mean[: chosen_ids.shape[0]].mean()
+        return chosen_logps, rejected_logps, aux_loss, -all_logps_mean[: chosen_ids.shape[0]].mean(), log_probs, att_masks
 
     def concatenated_inputs(self, chosen_ids, c_mask, reject_ids, r_mask, prompt_id_lens):
         """Concatenate the chosen and rejected inputs into a single tensor.
@@ -368,3 +382,21 @@ class DPOTrainer(ABC):
         logprobs_sums = (per_token_logps * loss_masks).sum(-1)
         logprobs_means = (per_token_logps * loss_masks).sum(-1) / loss_masks.sum(-1)
         return logprobs_sums, logprobs_means
+
+    def _get_batch_kl(self,
+                  policy_logps, ref_logps,
+                  attention_mask, prompt_id_lens
+    ) -> torch.FloatTensor:
+        """
+        Approximate KL(π||π_ref) on the sampled continuation.
+        Returns a (batch,) tensor.
+        """
+        loss_masks = attention_mask.clone().bool()
+        for m, src_len in zip(loss_masks, prompt_id_lens):
+            m[:src_len] = False
+        loss_masks = loss_masks[:, 1:]
+
+        # difference of log-probs on the sampled tokens
+        delta = (policy_logps - ref_logps) * loss_masks
+        # average over non-masked positions *per sample*
+        return (delta**2).sum(-1) / loss_masks.sum(-1)
