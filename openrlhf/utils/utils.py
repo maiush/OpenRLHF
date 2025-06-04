@@ -2,7 +2,7 @@ from typing import List
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer
+from transformers import AutoProcessor, AutoTokenizer
 
 
 def get_strategy(args):
@@ -22,7 +22,12 @@ def get_strategy(args):
 
 
 def get_tokenizer(pretrain, model, padding_side="left", strategy=None, use_fast=True):
-    tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True, use_fast=use_fast)
+    if "mistral-3" in pretrain:
+        processor = AutoProcessor.from_pretrained(pretrain, trust_remote_code=True, use_fast=use_fast)
+        tokenizer = processor.tokenizer
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True, use_fast=use_fast)
+        processor = None
     tokenizer.padding_side = padding_side
     # NOTE: When enable vLLM, do not resize_token_embeddings, or the vocab size will mismatch with vLLM.
     # https://github.com/facebookresearch/llama-recipes/pull/196
@@ -32,7 +37,7 @@ def get_tokenizer(pretrain, model, padding_side="left", strategy=None, use_fast=
         if model is not None:
             model.config.pad_token_id = tokenizer.pad_token_id
 
-    return tokenizer
+    return processor if processor else tokenizer
 
 
 def convert_token_to_id(token, tokenizer):
