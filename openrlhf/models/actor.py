@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from peft import LoraConfig, TaskType, get_peft_model
 from peft.tuners.lora import LoraLayer
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, BitsAndBytesConfig
 from transformers.integrations.deepspeed import HfDeepSpeedConfig
 
 from .ring_attn_utils import gather_and_pad_tensor, unpad_and_slice_tensor
@@ -82,7 +82,10 @@ class Actor(nn.Module):
 
                 model_class = AutoLigerKernelForCausalLM
             else:
-                model_class = AutoModelForCausalLM
+                if "mistral-3" in pretrain_or_model:
+                    model_class = AutoModelForImageTextToText
+                else:
+                    model_class = AutoModelForCausalLM
 
             self.model = model_class.from_pretrained(
                 pretrain_or_model,

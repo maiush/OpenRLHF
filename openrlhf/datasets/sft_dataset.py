@@ -2,6 +2,7 @@ from typing import Callable
 
 import torch
 from torch.utils.data import Dataset
+from transformers import AutoProcessor
 
 from openrlhf.utils.utils import zero_pad_sequences
 
@@ -174,10 +175,18 @@ class SFTDataset(Dataset):
         prompt = self.prompts[idx]
         response = self.responses[idx]
 
+        # MISTRAL-3
+        try:
+            eos_token = self.tokenizer.eos_token
+            eos_token_id = self.tokenizer.eos_token_id
+        except:
+            eos_token = self.tokenizer.tokenizer.eos_token
+            eos_token_id = self.tokenizer.tokenizer.eos_token_id
+
         if not self.pretrain_mode:
             text = (prompt + response).rstrip("\n")
-            if not text.endswith(self.tokenizer.eos_token):
-                text += " " + self.tokenizer.eos_token
+            if not text.endswith(eos_token):
+                text += " " + eos_token
         else:
             text = prompt
 
@@ -195,7 +204,7 @@ class SFTDataset(Dataset):
 
         if not self.pretrain_mode:
             # to avoid EOS_token truncation
-            input_ids[0][-1] = self.tokenizer.eos_token_id
+            input_ids[0][-1] = eos_token_id
             attention_mask[0][-1] = True
         return input_ids, attention_mask, loss_mask
 
@@ -223,7 +232,13 @@ class SFTDataset(Dataset):
             attention_masks.append(attention_mask)
             loss_masks.append(loss_mask)
 
-        input_ids = zero_pad_sequences(input_ids, "right", self.tokenizer.pad_token_id)
+        # MISTRAL-3
+        try:
+            pad_token_id = self.tokenizer.pad_token_id
+        except:
+            pad_token_id = self.tokenizer.tokenizer.pad_token_id
+
+        input_ids = zero_pad_sequences(input_ids, "right", pad_token_id)
         attention_masks = zero_pad_sequences(attention_masks, "right")
         loss_masks = zero_pad_sequences(loss_masks, "right")
         return input_ids, attention_masks, loss_masks
