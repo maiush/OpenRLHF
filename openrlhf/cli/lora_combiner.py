@@ -9,9 +9,9 @@ def apply_lora(model_name_or_path, lora_path, output_path, is_rm, bf16):
     print(f"Loading the base model from {model_name_or_path}")
     model_cls = AutoModelForCausalLM if not is_rm else AutoModelForSequenceClassification
     base = model_cls.from_pretrained(
-        model_name_or_path, torch_dtype=torch.bfloat16 if bf16 else "auto", low_cpu_mem_usage=True
+        model_name_or_path, torch_dtype=torch.bfloat16 if bf16 else "auto", low_cpu_mem_usage=True, trust_remote_code=True
     )
-    base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
 
     print(f"Loading the LoRA adapter from {lora_path}")
     # apply lora to transformer
@@ -19,6 +19,7 @@ def apply_lora(model_name_or_path, lora_path, output_path, is_rm, bf16):
         base,
         lora_path,
         torch_dtype=torch.bfloat16 if bf16 else "auto",
+        trust_remote_code=True,
     )
 
     print("Applying and merging the LoRA weights")
